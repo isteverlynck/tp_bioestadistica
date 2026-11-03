@@ -18,8 +18,8 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```{r paquetes}
 # Paquetes que usamos para analizar la base y hacer los gráficos
 library(tidyverse)
-library(car)        # test de Levene y VIF
-library(pwr)        # tamaño de muestra y potencia
+library(pwr) # tamaño de muestra y potencia
+library(car)
 library(pROC)       # curva ROC
 library(survival)   # análisis de supervivencia
 ```
@@ -36,7 +36,7 @@ En este contexto, resulta de interés analizar la asociación entre el estado de
 
 ## Dataset utilizado y fuente
 
-Se utilizó la base *Breast Cancer Prediction* publicada en Kaggle (marshalpatel3558, licencia MIT), que reproduce la base *SEER Breast Cancer Data* (Teng, IEEE DataPort, 2019). Los datos provienen de la actualización de noviembre de 2017 del programa SEER (*Surveillance, Epidemiology, and End Results*) del Instituto Nacional del Cáncer de Estados Unidos, un registro poblacional de cáncer. Incluye mujeres con carcinoma ductal y lobulillar infiltrante de mama diagnosticadas entre 2006 y 2010. Cada fila es una paciente y hay 16 variables clínicas, patológicas y de seguimiento.
+Se utilizó la base *Breast Cancer Prediction* publicada en Kaggle (4), que reproduce la base *SEER Breast Cancer Data* (3). Los datos provienen de la actualización de noviembre de 2017 del programa SEER (5) del Instituto Nacional del Cáncer de Estados Unidos, un registro poblacional de cáncer. Incluye mujeres con carcinoma ductal y lobulillar infiltrante de mama diagnosticadas entre 2006 y 2010. Cada fila es una paciente y hay 16 variables clínicas, patológicas y de seguimiento.
 
 ## Objetivos
 
@@ -72,7 +72,7 @@ Diagnósticos entre 2006 y 2010, con seguimiento hasta la actualización del reg
 
 **Criterios de inclusión** (definidos por el database): mujeres con diagnóstico de carcinoma ductal y lobulillar infiltrante de mama (código histológico 8522/3) entre 2006 y 2010, registradas en SEER.
 
-**Criterios de exclusión** (del database): pacientes con tamaño tumoral, ganglios examinados o ganglios positivos desconocidos, y pacientes con menos de 1 mes de supervivencia. En este trabajo se excluyen además los registros con datos faltantes en las variables del análisis.
+**Criterios de exclusión** (del database): pacientes con tamaño tumoral, ganglios examinados o ganglios positivos desconocidos, registros duplicados, y pacientes con menos de 1 mes de supervivencia. En este trabajo se excluyen además los registros con datos faltantes en las variables del análisis.
 
 ## Importación y preparación de los datos
 
@@ -86,12 +86,16 @@ dim(datos)
 str(datos)
 summary(datos)
 colSums(is.na(datos))
+sum(duplicated(datos))
 ```
+
+La base no tiene datos faltantes en ninguna variable, pero sí aparece una fila repetida, es decir, dos registros idénticos en las 16 variables, incluso en los meses de supervivencia. Como es muy poco probable que se trate de dos pacientes distintas, lo tomamos como un error de carga y nos quedamos con uno solo.
 
 ```{r preparacion}
 # Usamos nombres más cortos para trabajar con las variables.
 # Dejamos la base original en 'datos' por si necesitamos revisarla.
 d <- datos %>%
+  distinct() %>%
   mutate(
     edad = Age,
     raza = factor(Race, levels = c("White", "Black", "Other")),
@@ -126,9 +130,12 @@ table(d$estado)
 table(d$RE)
 # Verificamos si hay categorías con muy pocos casos
 table(datos$differentiate)
+table(datos$`Marital Status`)
 ```
 
 En los modelos R usa como referencia la primera categoría de cada factor. Nos interesa especialmente tomar RE positivo como referencia, para comparar contra RE negativo. La variable `Grade` no se usa porque tiene la misma información que `differentiate`.
+
+Dos variables se recategorizaron. En el grado de diferenciación, la categoría "Undifferentiated" tiene solo 19 pacientes, muy pocas para estimar su efecto por separado, así que la unimos con "Poorly differentiated", que es la más parecida desde lo clínico. El estado civil tenía cinco categorías, varias con pocos casos (por ejemplo, 45 separadas), por lo que lo resumimos en casada y no casada.
 
 ## Variables
 
@@ -140,17 +147,213 @@ variables <- data.frame(
                "Estadio A", "Tamaño del tumor", "Receptor de progesterona",
                "Ganglios examinados", "Ganglios positivos", "Supervivencia (meses)"),
   Rol = c("Respuesta", "Exposición principal", rep("Explicatoria", 12), "Seguimiento"),
-  Tipo = c("Cualitativa dicotómica", "Cualitativa dicotómica", "Cuantitativa",
+  Tipo = c("Cualitativa dicotómica", "Cualitativa dicotómica", "Cuantitativa discreta",
            "Cualitativa nominal", "Cualitativa dicotómica", "Cualitativa ordinal",
            "Cualitativa ordinal", "Cualitativa ordinal", "Cualitativa ordinal",
-           "Cualitativa dicotómica", "Cuantitativa", "Cualitativa dicotómica",
-           "Cuantitativa discreta", "Cuantitativa discreta", "Cuantitativa")
+           "Cualitativa dicotómica", "Cuantitativa continua", "Cualitativa dicotómica",
+           "Cuantitativa discreta", "Cuantitativa discreta", "Cuantitativa discreta"),
+  Medicion = c("Viva / Fallecida", "Positivo / Negativo", "Años cumplidos",
+               "Blanca / Negra / Otra", "Casada / No casada", "T1 a T4",
+               "N1 a N3", "IIA a IIIC", "Bien / Moderado / Pobre-indiferenciado",
+               "Regional / Distante", "Milímetros", "Positivo / Negativo",
+               "Cantidad de ganglios", "Cantidad de ganglios", "Meses")
 )
 knitr::kable(variables)
 ```
 
+Algunas variables contienen información repetida. El estadio 6 se construye a partir de T y N, el estadio T depende del tamaño del tumor y el N de la cantidad de ganglios positivos. Por eso no pueden entrar todas juntas al modelo multivariado, y más adelante vamos a elegir cuáles conservar para evitar multicolinealidad.
+
 Distribución de probabilidades: las variables dicotómicas siguen una distribución Binomial; las categóricas con más de dos categorías, una Multinomial; para las cuantitativas se evalúa la normalidad en los resultados.
 
+## Sesgos
+
+El primero que hay que considerar es el **sesgo de selección**. Las pacientes provienen de un registro de Estados Unidos y la base de Kaggle es solo una parte de todo lo que reúne SEER, sin que se explique cómo se eligió. Además, la base ya viene sin las pacientes que tenían datos desconocidos o que sobrevivieron menos de un mes, que probablemente eran los casos más graves. Este sesgo no se puede corregir con los datos disponibles, así que lo tenemos en cuenta al interpretar los resultados, que no necesariamente se pueden generalizar a otras poblaciones.
+
+También puede haber **sesgo de información por mala clasificación**. El estado del receptor de estrógeno, el estadio y el grado fueron determinados por distintos laboratorios y centros, con criterios que pueden variar entre sí, y la variable `Status` no aclara si la muerte fue por el cáncer o por otra causa. Como no tenemos forma de verificarlo, asumimos que los registros son válidos.
+
+Otro problema es la **pérdida en el seguimiento**. Las pacientes se diagnosticaron en distintos años entre 2006 y 2010, así que no todas fueron seguidas durante el mismo tiempo, y algunas figuran como vivas con muy pocos meses de seguimiento:
+
+```{r seguimiento}
+# Pacientes vivas con menos de 5 años (60 meses) de seguimiento
+sum(d$estado == "Alive" & d$meses < 60)
+```
+
+Para ellas no sabemos qué pasó después, y la regresión logística no tiene en cuenta el tiempo, solo si la paciente murió o no. Lo señalamos como una limitación del análisis.
+
+Por último, al ser un estudio observacional puede haber **confusión**. Los tumores con receptor de estrógeno negativo suelen ser también de mayor grado o estadio, por lo que parte de la mortalidad que se les atribuye podría deberse a esas otras características. Esto se aborda ajustando por esas variables en el modelo multivariado y comparando el OR crudo con el ajustado.
+
+## Tamaño muestral y potencia
+
+La comparación principal es entre dos proporciones, la de fallecidas con receptor de estrógeno negativo y la de fallecidas con receptor positivo. Para calcular el tamaño muestral ideal usamos un nivel de significación de 0,05 y una potencia de 80%. Como no tenemos un valor previo del efecto esperado, tomamos un tamaño de efecto pequeño (h = 0,2), porque una diferencia de mortalidad de pocos puntos porcentuales ya es relevante desde lo clínico y queremos poder detectarla.
+
+```{r tamano-muestral}
+# Tamaño muestral ideal por grupo
+pwr.2p.test(h = 0.2, sig.level = 0.05, power = 0.80)
+
+# Potencia con las pacientes que tenemos en cada grupo (RE negativo y RE positivo)
+pwr.2p2n.test(h = 0.2, n1 = 269, n2 = 3754, sig.level = 0.05)
+```
+
+Con estos parámetros harían falta unas 393 pacientes por grupo. Nuestro grupo de receptor negativo tiene menos (269), pero como el grupo positivo es mucho más grande, la potencia alcanzada es de alrededor de 89%. Es decir, si la diferencia real de mortalidad fuera pequeña, tendríamos casi un 90% de probabilidad de detectarla, por lo que la muestra resulta suficiente.
+
+## Métodos estadísticos
+
+Primero se hace un análisis descriptivo de todas las variables, separando a las pacientes vivas de las fallecidas. Las variables cualitativas se resumen con frecuencias y porcentajes. Para las cuantitativas evaluamos la normalidad con histogramas, gráficos Q-Q y el test de Shapiro-Wilk. Si la distribución es aproximadamente normal se informa la media y el desvío estándar, y si es asimétrica, la mediana y el rango intercuartílico.
+
+Después se compara cada variable entre vivas y fallecidas de forma univariada. Para las cualitativas usamos el test de chi-cuadrado, o el test exacto de Fisher si más del 20% de las frecuencias esperadas son menores a 5. Para las cuantitativas usamos el test t de Student si son normales, comprobando antes la igualdad de varianzas con el test de Levene, o el test de Mann-Whitney si no lo son. También se calcula el odds ratio crudo de muerte asociado al receptor de estrógeno negativo, con su intervalo de confianza del 95%.
+
+Para el análisis multivariado se usa un modelo de regresión logística, porque la variable respuesta es dicotómica (viva o fallecida) y permite estimar el efecto del receptor de estrógeno ajustando por las demás variables. Se parte de un modelo saturado, creando variables dummy para las categóricas, y se revisan los supuestos del modelo, en particular la independencia de las observaciones y que no haya variables explicatorias redundantes. Los resultados se expresan como odds ratios ajustados con su intervalo de confianza del 95%, y la capacidad del modelo para distinguir entre vivas y fallecidas se evalúa con la curva ROC.
+
+Para identificar variables confusoras se compara el odds ratio del receptor de estrógeno con y sin cada variable en el modelo, y se analiza si cambia de manera importante al incluirla. Para evaluar modificación de efecto se agregan términos de interacción entre el receptor de estrógeno y las variables de interés.
+
+En todos los análisis se usa un nivel de significación de 0,05, y se trabaja con el software R.
+
+# Resultados
+
+## Análisis descriptivo
+
+### Normalidad de las variables cuantitativas
+
+```{r normalidad}
+# Edad
+hist(d$edad, main = "Edad", xlab = "Años", ylab = "Frecuencia")
+qqnorm(d$edad, main = "Q-Q Edad"); qqline(d$edad)
+shapiro.test(d$edad)
+
+# Tamaño del tumor
+hist(d$tamano_tumor, main = "Tamaño del tumor", xlab = "mm", ylab = "Frecuencia")
+qqnorm(d$tamano_tumor, main = "Q-Q Tamaño del tumor"); qqline(d$tamano_tumor)
+shapiro.test(d$tamano_tumor)
+
+# Ganglios examinados
+hist(d$ganglios_exam, main = "Ganglios examinados", xlab = "Cantidad", ylab = "Frecuencia")
+qqnorm(d$ganglios_exam, main = "Q-Q Ganglios examinados"); qqline(d$ganglios_exam)
+shapiro.test(d$ganglios_exam)
+
+# Ganglios positivos
+hist(d$ganglios_pos, main = "Ganglios positivos", xlab = "Cantidad", ylab = "Frecuencia")
+qqnorm(d$ganglios_pos, main = "Q-Q Ganglios positivos"); qqline(d$ganglios_pos)
+shapiro.test(d$ganglios_pos)
+```
+
+Ninguna de las variables cuantitativas tiene distribución normal. La edad presenta un histograma bastante plano entre los 45 y los 65 años, que se corta en los extremos porque la base solo incluye pacientes de 30 a 69, y en el gráfico Q-Q los puntos se separan de la recta en ambas puntas. El tamaño del tumor, los ganglios examinados y los ganglios positivos muestran asimetría positiva, con la mayoría de los valores concentrados abajo y una cola larga hacia la derecha, que en el Q-Q se ve como una curva que se aleja de la recta hacia arriba, sobre todo en los ganglios positivos. En el test de Shapiro-Wilk la hipótesis nula es que la variable tiene distribución normal. En las cuatro el p-valor fue menor a 0,05, así que se rechaza esa hipótesis, lo que confirma lo que mostraban los gráficos. Por eso las resumimos con mediana y rango intercuartílico, y para compararlas entre vivas y fallecidas usamos el test de Mann-Whitney.
+
+### Comparación descriptiva entre vivas y fallecidas
+
+```{r descriptivo-cuantitativas}
+# Resumen de cada variable cuantitativa, separado por estado al final del seguimiento
+tapply(d$edad, d$estado, summary)
+tapply(d$tamano_tumor, d$estado, summary)
+tapply(d$ganglios_exam, d$estado, summary)
+tapply(d$ganglios_pos, d$estado, summary)
+```
+
+```{r descriptivo-cualitativas}
+# Porcentaje de cada categoría dentro de las vivas y dentro de las fallecidas
+round(prop.table(table(d$raza, d$estado), 2) * 100, 1)
+round(prop.table(table(d$estado_civil, d$estado), 2) * 100, 1)
+round(prop.table(table(d$T_estadio, d$estado), 2) * 100, 1)
+round(prop.table(table(d$N_estadio, d$estado), 2) * 100, 1)
+round(prop.table(table(d$estadio_6, d$estado), 2) * 100, 1)
+round(prop.table(table(d$grado, d$estado), 2) * 100, 1)
+round(prop.table(table(d$A_estadio, d$estado), 2) * 100, 1)
+round(prop.table(table(d$RE, d$estado), 2) * 100, 1)
+round(prop.table(table(d$RP, d$estado), 2) * 100, 1)
+```
+
+CHEQUEAR NUMEROSSSSSS - QUE COINCIDAN (los porcentajes)
+Entre las variables cuantitativas, las pacientes fallecidas eran algo mayores que las vivas (mediana de 56,5 años, RIC 48–63, frente a 54 años, RIC 47–61), tenían tumores más grandes (30 mm, RIC 20–50, frente a 23 mm, RIC 15–35) y más ganglios positivos (4, RIC 2–10, frente a 2, RIC 1–4). La cantidad de ganglios examinados fue igual en ambos grupos (mediana de 14), algo esperable porque depende de la cirugía y no de la gravedad del tumor.
+
+En las variables cualitativas se repite el mismo patrón, con las características de peor pronóstico más frecuentes entre las fallecidas. En ellas fueron más comunes los tumores T3 y T4 (25,3% frente a 14,0%), el compromiso ganglionar N3 (29,4% frente a 8,5%), el estadio IIIC (29,4% frente a 8,5%), el grado pobre o indiferenciado (44,2% frente a 25,2%) y la extensión a distancia (5,7% frente a 1,7%). También hubo más pacientes de raza negra (11,9% frente a 6,4%) y más no casadas (41,9% frente a 33,0%). En cuanto a la exposición principal, el 17,5% de las fallecidas tenía un tumor con receptor de estrógeno negativo, frente al 4,7% de las vivas, y algo parecido ocurre con el receptor de progesterona negativo (33,1% frente a 14,5%). Estas diferencias son descriptivas; en la sección siguiente se evalúa si son estadísticamente significativas.
+
+## Análisis univariado
+
+Para cada variable cualitativa se plantea como hipótesis nula que es independiente del estado al final del seguimiento, y como alternativa que existe asociación entre ambas. Para las cuantitativas, la hipótesis nula es que la distribución de la variable es igual en vivas y fallecidas, y la alternativa que difiere entre los grupos. En todos los casos se usa un nivel de significación de 0,05.
+
+```{r chi-cuadrado}
+# Chi-cuadrado de cada variable cualitativa contra el estado
+chisq.test(table(d$raza, d$estado))
+chisq.test(table(d$estado_civil, d$estado))
+chisq.test(table(d$T_estadio, d$estado))
+chisq.test(table(d$N_estadio, d$estado))
+chisq.test(table(d$estadio_6, d$estado))
+chisq.test(table(d$grado, d$estado))
+chisq.test(table(d$A_estadio, d$estado))
+chisq.test(table(d$RE, d$estado))
+chisq.test(table(d$RP, d$estado))
+
+# Frecuencias esperadas de las variables con categorías más chicas
+chisq.test(table(d$estadio_6, d$estado))$expected
+chisq.test(table(d$T_estadio, d$estado))$expected
+chisq.test(table(d$A_estadio, d$estado))$expected
+```
+
+```{r mann-whitney}
+# Mann-Whitney de cada variable cuantitativa entre vivas y fallecidas
+wilcox.test(edad ~ estado, data = d)
+wilcox.test(tamano_tumor ~ estado, data = d)
+wilcox.test(ganglios_exam ~ estado, data = d)
+wilcox.test(ganglios_pos ~ estado, data = d)
+```
+
+```{r or-crudo}
+# Odds ratio crudo de muerte para receptor de estrógeno negativo vs positivo
+fisher.test(table(d$RE, d$estado))
+```
+
+Un p-valor menor a 0,05 indica que, si la hipótesis nula fuera cierta, sería muy poco probable (menos de un 5%) encontrar diferencias tan grandes como las observadas, por lo que se rechaza esa hipótesis.
+
+En todas las variables cualitativas el p-valor del chi-cuadrado fue menor a 0,05, así que se rechaza la hipótesis de independencia. Esto quiere decir que la proporción de fallecidas no es la misma en todas las categorías de cada variable, y que las diferencias que vimos en el análisis descriptivo difícilmente se deban solo al azar. Las frecuencias esperadas fueron mayores a 5 en todas las celdas, incluso en las categorías con menos pacientes (la menor fue 10,3, en el estadio IIIB), por lo que el uso del chi-cuadrado resulta válido y no fue necesario recurrir al test exacto de Fisher.
+
+En la edad, el tamaño del tumor y la cantidad de ganglios positivos, el test de Mann-Whitney dio p-valores menores a 0,001, por lo que se rechaza la hipótesis nula y se concluye que estas variables toman valores distintos en vivas y fallecidas, más altos en las fallecidas según las medianas. En cambio, en los ganglios examinados el p-valor fue 0,068, mayor a 0,05, así que no se rechaza la hipótesis nula. Esto no prueba que los grupos sean iguales, sino que no hay evidencia suficiente para afirmar que difieran, lo que coincide con que la mediana fue la misma en ambos.
+
+En cuanto a la exposición principal, el odds ratio crudo de muerte para las pacientes con receptor de estrógeno negativo fue de 4,28 (IC 95%: 3,27–5,60). Esto significa que, sin tener en cuenta otras variables, las chances de morir durante el seguimiento fueron unas cuatro veces mayores en las pacientes con receptor negativo que en las de receptor positivo. Como el intervalo de confianza no incluye al 1, la asociación es estadísticamente significativa.
+
+## Análisis multivariado
+
+### Modelo saturado
+
+Como la variable respuesta es dicotómica, se ajusta un modelo de regresión logística. Se parte de un modelo saturado, que incluye todas las variables explicatorias junto con la exposición principal. La supervivencia en meses no se incluye porque es el tiempo de seguimiento y no una característica de la paciente al momento del diagnóstico.
+
+Las variables cualitativas no pueden entrar al modelo como texto, así que R las transforma en variables dummy. Una variable con k categorías se convierte en k − 1 variables que valen 1 o 0, y la categoría que queda afuera funciona como referencia. Por ejemplo, para la raza:
+
+```{r dummies}
+contrasts(d$raza)
+contrasts(d$T_estadio)
+```
+
+```{r modelo-saturado}
+modelo_sat <- glm(estado ~ RE + edad + raza + estado_civil + T_estadio + N_estadio +
+                    estadio_6 + grado + A_estadio + tamano_tumor + RP +
+                    ganglios_exam + ganglios_pos,
+                  data = d, family = binomial)
+summary(modelo_sat)
+```
+```{r estadio6-vs-TN}
+# Cada estadio 6 corresponde a combinaciones fijas de T y N
+table(d$estadio_6, paste(d$T_estadio, d$N_estadio))
+```
+
+El modelo saturado no pudo estimar el coeficiente del estadio IIIC, porque el estadio 6 se construye combinando el estadio T y el N, como muestra la tabla anterior. Al estar esa información repetida, el modelo no puede separar el efecto de cada variable, por lo que el estadio 6 no se conservará en el modelo.
+
+Aun así, el modelo saturado permite una primera lectura. La desviación residual (2958,6) es menor que la nula (3444,4), lo que indica que las variables incluidas mejoran la explicación de la mortalidad respecto de un modelo sin variables. El receptor de estrógeno negativo sigue asociado significativamente a una mayor mortalidad (p < 0,001), aunque su coeficiente es menor que el que surge del análisis crudo, lo que sugiere que parte de esa asociación se explica por otras variables del modelo. También se asocian significativamente la edad, la raza, el estado civil, el estadio N, el T4, el grado, el receptor de progesterona y la cantidad de ganglios examinados y positivos. En cambio, el tamaño del tumor y la extensión a distancia dejan de ser significativos al ajustar por el resto, probablemente porque su información ya está incluida en el estadio T y en el compromiso ganglionar.
+
+### Modelo sin el estadio 6 y multicolinealidad
+
+```{r modelo-sin-estadio6}
+modelo <- glm(estado ~ RE + edad + raza + estado_civil + T_estadio + N_estadio +
+                grado + A_estadio + tamano_tumor + RP + ganglios_exam + ganglios_pos,
+              data = d, family = binomial)
+summary(modelo)
+```
+
+Para comprobar que no queden variables explicatorias demasiado relacionadas entre sí, se calcula el factor de inflación de la varianza (VIF), que mide cuánto aumenta la varianza de cada coeficiente por la correlación con las demás variables. Valores entre 7 y 10 se consideran altos.
+
+```{r vif}
+vif(modelo)
+```
+
+Ninguna variable presenta un VIF alto, ya que todos son menores a 7. Los valores más elevados corresponden al estadio T (4,3), los ganglios positivos (4,3), el estadio N (3,9) y el tamaño del tumor (3,7), que son las variables que se habían señalado como relacionadas entre sí, pero no alcanzan un nivel que obligue a excluir alguna. Además, al quitar el estadio 6 la desviación residual prácticamente no cambió (de 2958,6 a 2960,2) y el AIC bajó de 3000,6 a 2996,2, lo que confirma que esa variable no aportaba información nueva al modelo.
 
 # Referencias bibliográficas
 1. Organización Mundial de la Salud. Cáncer de mama [Internet]. Ginebra: OMS; 2026 [citado 26 oct 2026]. Disponible en: https://www.who.int/es/news-room/fact-sheets/detail/breast-cancer
