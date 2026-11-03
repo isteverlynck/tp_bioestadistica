@@ -1,0 +1,162 @@
+---
+title: "TP Integrador – Bioestadística (16.43)"
+subtitle: "Receptor de estrógeno y mortalidad en mujeres con cáncer de mama"
+author: "Balestieri Serena, Baronio Tobias, Steverlynck Ines"
+date: " 17/11/2026"
+lang: es
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r paquetes}
+# Paquetes que usamos para analizar la base y hacer los gráficos
+library(tidyverse)
+library(car)        # test de Levene y VIF
+library(pwr)        # tamaño de muestra y potencia
+library(pROC)       # curva ROC
+library(survival)   # análisis de supervivencia
+```
+
+# Introducción
+
+## Descripción del problema
+
+El cáncer de mama es uno de los principales problemas de salud a nivel mundial. Según la Organización Mundial de la Salud (OMS), en 2024 se diagnosticaron aproximadamente **2,4 millones de casos en mujeres** y se registraron **694.000 muertes** por esta enfermedad. Ese mismo año, fue el cáncer más frecuente entre las mujeres en 164 de los 186 países examinados (1).
+
+Su pronóstico depende de características como el tamaño del tumor, el compromiso de los ganglios linfáticos, el grado histológico y su perfil biológico. Entre los marcadores relevantes se encuentra el **receptor de estrógeno (RE)**, cuyo estado aporta información para evaluar el pronóstico y orientar el tratamiento. Los tumores con RE positivo pueden beneficiarse de tratamientos hormonales que bloquean la acción de los estrógenos o reducen su producción (2).
+
+En este contexto, resulta de interés analizar la asociación entre el estado del RE y la mortalidad durante el seguimiento, considerando otras características de las pacientes y del tumor. Este análisis permite evaluar si dicha asociación se mantiene al ajustar por otros factores relacionados con el pronóstico.
+
+## Dataset utilizado y fuente
+
+Se utilizó la base *Breast Cancer Prediction* publicada en Kaggle (marshalpatel3558, licencia MIT), que reproduce la base *SEER Breast Cancer Data* (Teng, IEEE DataPort, 2019). Los datos provienen de la actualización de noviembre de 2017 del programa SEER (*Surveillance, Epidemiology, and End Results*) del Instituto Nacional del Cáncer de Estados Unidos, un registro poblacional de cáncer. Incluye mujeres con carcinoma ductal y lobulillar infiltrante de mama diagnosticadas entre 2006 y 2010. Cada fila es una paciente y hay 16 variables clínicas, patológicas y de seguimiento.
+
+## Objetivos
+
+**Objetivo general:** evaluar si el estado del receptor de estrógeno se asocia con la mortalidad en mujeres con cáncer de mama, ajustando por características demográficas y del tumor.
+
+**Objetivos específicos:**
+
+1. Describir las características demográficas y clínicas de las pacientes.
+2. Comparar las características de las pacientes fallecidas y las vivas al final del seguimiento.
+3. Estimar el odds ratio de muerte asociado a un receptor de estrógeno negativo, crudo y ajustado mediante regresión logística.
+4. Identificar posibles variables confusoras y modificadoras de efecto.
+
+## Pregunta de investigación (PECO)
+
+- **P (población):** mujeres con carcinoma ductal o lobulillar infiltrante de mama, diagnosticadas entre 2006 y 2010 (registro SEER, EE. UU.).
+- **E (exposición, no intervención):** tumor con receptor de estrógeno negativo.
+- **C (comparación):** tumor con receptor de estrógeno positivo.
+- **O (outcome):** muerte al final del seguimiento (variable `Status`: Dead/Alive).
+
+**Pregunta:** En mujeres con cáncer de mama infiltrante, ¿tener un tumor con receptor de estrógeno negativo, comparado con uno positivo, se asocia a mayor mortalidad, independientemente de la edad y del estadio y grado del tumor?
+
+# Materiales y métodos
+
+## Diseño del estudio
+
+Se trata de un estudio observacional y analítico de *cohorte retrospectiva*, basado en datos secundarios de un registro poblacional de cáncer. Se analiza la evolución de las pacientes desde el diagnóstico hasta el fallecimiento o el final del seguimiento. El carácter retrospectivo se debe a que tanto las características iniciales como la información del seguimiento ya estaban registradas al comenzar este análisis.
+
+## Marco temporal
+
+Diagnósticos entre 2006 y 2010, con seguimiento hasta la actualización del registro de noviembre de 2017 (el tiempo de seguimiento se informa en la variable `Survival Months`).
+
+## Participantes
+
+**Criterios de inclusión** (definidos por el database): mujeres con diagnóstico de carcinoma ductal y lobulillar infiltrante de mama (código histológico 8522/3) entre 2006 y 2010, registradas en SEER.
+
+**Criterios de exclusión** (del database): pacientes con tamaño tumoral, ganglios examinados o ganglios positivos desconocidos, y pacientes con menos de 1 mes de supervivencia. En este trabajo se excluyen además los registros con datos faltantes en las variables del análisis.
+
+## Importación y preparación de los datos
+
+```{r datos}
+# Importamos el csv. Tiene que estar en la misma carpeta que este archivo.
+datos <- read.csv("Breast_Cancer.csv", check.names = FALSE)
+names(datos) <- trimws(names(datos))  # algunas columnas tienen espacios al final
+
+head(datos)
+dim(datos)
+str(datos)
+summary(datos)
+colSums(is.na(datos))
+```
+
+```{r preparacion}
+# Usamos nombres más cortos para trabajar con las variables.
+# Dejamos la base original en 'datos' por si necesitamos revisarla.
+d <- datos %>%
+  mutate(
+    edad = Age,
+    raza = factor(Race, levels = c("White", "Black", "Other")),
+    estado_civil = factor(ifelse(`Marital Status` == "Married", "Casada", "No casada")),
+    T_estadio = factor(`T Stage`),
+    N_estadio = factor(`N Stage`),
+    estadio_6 = factor(`6th Stage`),
+    grado = case_when(
+      differentiate == "Well differentiated" ~ "Bien diferenciado",
+      differentiate == "Moderately differentiated" ~ "Moderadamente diferenciado",
+      TRUE ~ "Pobre/indiferenciado"
+    ),
+    grado = factor(grado, levels = c("Bien diferenciado", "Moderadamente diferenciado",
+                                     "Pobre/indiferenciado")),
+    A_estadio = factor(`A Stage`, levels = c("Regional", "Distant")),
+    tamano_tumor = `Tumor Size`,
+    RE = factor(`Estrogen Status`, levels = c("Positive", "Negative")),
+    RP = factor(`Progesterone Status`, levels = c("Positive", "Negative")),
+    ganglios_exam = `Regional Node Examined`,
+    ganglios_pos = `Reginol Node Positive`,
+    meses = `Survival Months`,
+    estado = factor(Status, levels = c("Alive", "Dead")),
+    muerte = ifelse(Status == "Dead", 1, 0)  # 1 falleció, 0 viva
+  ) %>%
+  select(edad, raza, estado_civil, T_estadio, N_estadio, estadio_6, grado,
+         A_estadio, tamano_tumor, RE, RP, ganglios_exam, ganglios_pos,
+         meses, estado, muerte) %>%
+  na.omit()
+
+nrow(d)
+table(d$estado)
+table(d$RE)
+# Verificamos si hay categorías con muy pocos casos
+table(datos$differentiate)
+```
+
+En los modelos R usa como referencia la primera categoría de cada factor. Nos interesa especialmente tomar RE positivo como referencia, para comparar contra RE negativo. La variable `Grade` no se usa porque tiene la misma información que `differentiate`.
+
+## Variables
+
+```{r tabla-variables}
+# Clasificamos las variables del estudio
+variables <- data.frame(
+  Variable = c("Mortalidad (Status)", "Receptor de estrógeno", "Edad", "Raza",
+               "Estado civil", "Estadio T", "Estadio N", "Estadio 6", "Grado",
+               "Estadio A", "Tamaño del tumor", "Receptor de progesterona",
+               "Ganglios examinados", "Ganglios positivos", "Supervivencia (meses)"),
+  Rol = c("Respuesta", "Exposición principal", rep("Explicatoria", 12), "Seguimiento"),
+  Tipo = c("Cualitativa dicotómica", "Cualitativa dicotómica", "Cuantitativa",
+           "Cualitativa nominal", "Cualitativa dicotómica", "Cualitativa ordinal",
+           "Cualitativa ordinal", "Cualitativa ordinal", "Cualitativa ordinal",
+           "Cualitativa dicotómica", "Cuantitativa", "Cualitativa dicotómica",
+           "Cuantitativa discreta", "Cuantitativa discreta", "Cuantitativa")
+)
+knitr::kable(variables)
+```
+
+Distribución de probabilidades: las variables dicotómicas siguen una distribución Binomial; las categóricas con más de dos categorías, una Multinomial; para las cuantitativas se evalúa la normalidad en los resultados.
+
+
+# Referencias bibliográficas
+1. Organización Mundial de la Salud. Cáncer de mama [Internet]. Ginebra: OMS; 2026 [citado 26 oct 2026]. Disponible en: https://www.who.int/es/news-room/fact-sheets/detail/breast-cancer
+2. Instituto Nacional del Cáncer de EE. UU. Tratamiento del cáncer de seno (PDQ®): versión para profesionales de salud [Internet]. Bethesda: NCI [citado 26 oct 2026]. Disponible en: https://www.cancer.gov/espanol/tipos/seno/pro/tratamiento-seno-pdq
+3. Teng J. SEER Breast Cancer Data. IEEE DataPort; 2019. doi:10.21227/a9qy-ph35.
+4. Patel M. Breast Cancer Prediction [dataset]. Kaggle. https://www.kaggle.com/datasets/marshalpatel3558/breast-cancer-prediction
+5. National Cancer Institute. Surveillance, Epidemiology, and End Results (SEER) Program. https://seer.cancer.gov
+
+
