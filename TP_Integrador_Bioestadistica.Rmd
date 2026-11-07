@@ -355,6 +355,160 @@ vif(modelo)
 
 Ninguna variable presenta un VIF alto, ya que todos son menores a 7. Los valores más elevados corresponden al estadio T (4,3), los ganglios positivos (4,3), el estadio N (3,9) y el tamaño del tumor (3,7), que son las variables que se habían señalado como relacionadas entre sí, pero no alcanzan un nivel que obligue a excluir alguna. Además, al quitar el estadio 6 la desviación residual prácticamente no cambió (de 2958,6 a 2960,2) y el AIC bajó de 3000,6 a 2996,2, lo que confirma que esa variable no aportaba información nueva al modelo.
 
+### Análisis de variables confusoras
+
+Para evaluar la presencia de posibles variables confusoras, comparamos el OR crudo del receptor de estrógeno con los OR obtenidos al ajustar por otras variables. La idea es observar si la asociación entre el RE y la mortalidad cambia al incorporar cada variable al modelo.
+
+```{r}
+# Analisis de confusion
+
+# OR sin ajustar
+modelo_crudo <- glm(estado ~ RE, data = d, family = binomial)
+exp(coef(modelo_crudo))
+
+# Ajustamos por otras variables
+modelo_RP <- glm(estado ~ RE + RP, data = d, family = binomial)
+modelo_grado <- glm(estado ~ RE + grado, data = d, family = binomial)
+modelo_N <- glm(estado ~ RE + N_estadio, data = d, family = binomial)
+modelo_edad <- glm(estado ~ RE + edad, data = d, family = binomial)
+
+# Comparamos el OR del receptor de estrogeno
+exp(coef(modelo_RP))["RENegative"]
+exp(coef(modelo_grado))["RENegative"]
+exp(coef(modelo_N))["RENegative"]
+exp(coef(modelo_edad))["RENegative"]
+```
+
+El OR crudo fue de 4,29. Al ajustar por el receptor de progesterona disminuyó a 2,46, y al ajustar por el grado tumoral bajó a 3,26. Esto indica que ambas variables podrían estar influyendo en la asociación observada entre el receptor de estrógeno y la mortalidad.
+
+Al ajustar por el estadio N, el OR disminuyó a 3,71, mientras que al ajustar por edad aumentó a 4,54. Por lo tanto, el receptor de progesterona y el grado tumoral fueron las variables que más modificaron la estimación del OR en estas comparaciones individuales.
+
+De todas formas, estos resultados no alcanzan por sí solos para confirmar que sean variables confusoras, por lo que también es necesario considerar su relación clínica con el receptor de estrógeno y la mortalidad.
+
+### Modificacion de efecto
+
+También analizamos si la relación entre el receptor de estrógeno y la mortalidad depende del grado tumoral. Para esto, agregamos una interacción entre ambas variables en el modelo de regresión logística.
+
+```{r}
+# Interaccion entre RE y grado tumoral
+
+modelo_int <- glm(estado ~ RE * grado + edad + raza + estado_civil +
+                    T_estadio + N_estadio + RP + ganglios_exam + ganglios_pos,
+                  data = d, family = binomial)
+
+summary(modelo_int)
+```
+```{r}
+# Comparamos con modelo sin interaccion
+modelo_sin_int <- glm(estado ~ RE + grado + edad + raza + estado_civil +
+                        T_estadio + N_estadio + RP + ganglios_exam + ganglios_pos,
+                      data = d, family = binomial)
+
+anova(modelo_sin_int, modelo_int, test = "Chisq")
+```
+Los términos de interacción entre el receptor de estrógeno y el grado tumoral presentaron p-valores de 0,636 y 0,655, ambos mayores a 0,05.
+
+Al comparar los modelos con y sin interacción mediante una prueba de chi-cuadrado, obtuvimos un p-valor de 0,8992. Como es mayor a 0,05, no rechazamos la hipótesis nula. Esto indica que agregar la interacción no produce una mejora estadísticamente significativa en el ajuste del modelo.
+
+Por lo tanto, no encontramos evidencia de modificación de efecto según el grado tumoral y decidimos no incluir esta interacción en el modelo final.
+
+### Elección del modelo final
+
+Después de revisar las variables incluidas en el modelo, decidimos comparar el modelo anterior con otro sin el tamaño tumoral y el estadio A. Estas dos variables no habían mostrado una asociación estadísticamente significativa en el modelo ajustado y parte de su información también está representada por los estadios T y N.
+
+```{r}
+# Modelo sin tamaño tumoral ni estadio A
+modelo_final <- glm(estado ~ RE + edad + raza + estado_civil +
+                      T_estadio + N_estadio + grado + RP +
+                      ganglios_exam + ganglios_pos,
+                    data = d, family = binomial)
+
+summary(modelo_final)
+
+# Comparamos los modelos
+AIC(modelo, modelo_final)
+
+anova(modelo_final, modelo, test = "Chisq")
+```
+El modelo sin tamaño tumoral ni estadio A presentó un AIC de 2992,19, menor al del modelo anterior (2996,16). Además, al comparar ambos modelos mediante una prueba de chi-cuadrado, obtuvimos un p-valor de 0,986. Como es mayor a 0,05, no rechazamos la hipótesis nula, por lo que no encontramos una pérdida significativa de ajuste al eliminar estas variables.
+
+Por este motivo, decidimos conservar el modelo más sencillo, que incluye el receptor de estrógeno, edad, raza, estado civil, estadios T y N, grado tumoral, receptor de progesterona y cantidad de ganglios examinados y positivos.
+
+### Odds ratios del modelo final
+
+Una vez elegido el modelo final, calculamos los odds ratios ajustados de las variables incluidas. Estos valores permiten analizar su asociación con la mortalidad, manteniendo constantes las demás variables del modelo.
+
+```{r}
+# Odds ratios del modelo final
+OR <- exp(coef(modelo_final))
+print(OR)
+
+# Intervalos de confianza del 95%
+IC <- exp(confint(modelo_final))
+print(IC)
+
+# Revisamos la multicolinealidad del modelo final
+vif(modelo_final)
+
+# Comparamos el OR del RE antes y despues de sacar las variables
+exp(coef(modelo))["RENegative"]
+exp(coef(modelo_final))["RENegative"]
+```
+En el modelo final, el receptor de estrógeno negativo presentó un OR ajustado de 2,15 (IC 95 %: 1,52–3,04). Esto indica que las pacientes con RE negativo tuvieron mayores chances de fallecimiento que aquellas con RE positivo, incluso después de ajustar por las demás variables del modelo. Como el intervalo de confianza no incluye el 1, la asociación es estadísticamente significativa.
+
+Al comparar este resultado con el OR crudo de 4,29, vemos que la asociación disminuye al incorporar otras características de las pacientes y del tumor.
+
+También encontramos mayores chances de fallecimiento en pacientes con estadios T y N más avanzados, tumores menos diferenciados y receptor de progesterona negativo. Por otro lado, una mayor cantidad de ganglios examinados se asoció con menores chances de fallecimiento, mientras que una mayor cantidad de ganglios positivos mostró la relación contraria.
+
+Al revisar la multicolinealidad del modelo final, observamos que los valores de GVIF ajustado fueron bajos, por lo que no encontramos indicios de multicolinealidad elevada. También comparamos el OR del receptor de estrógeno antes y después de eliminar el tamaño tumoral y el estadio A. El OR pasó de 2,145 a 2,147, por lo que prácticamente no cambió. Estos resultados, junto con la comparación de AIC y la prueba de chi-cuadrado, respaldan la elección del modelo más sencillo como modelo final.
+
+### Evaluación del modelo
+
+Además de interpretar los odds ratios, analizamos qué tan bien el modelo distingue entre las pacientes que fallecieron y las que seguían vivas al final del seguimiento. Para esto, utilizamos las probabilidades estimadas por la regresión logística.
+
+```{r}
+# Probabilidades estimadas por el modelo
+probabilidades <- predict(modelo_final, type = "response")
+
+# Usamos como punto de corte la proporcion de fallecidas
+corte <- mean(d$estado == "Dead")
+corte
+
+# Clasificamos a las pacientes
+predicciones <- ifelse(probabilidades >= corte, "Dead", "Alive")
+
+# Matriz de confusion
+matriz <- table(Real = d$estado, Predicho = predicciones)
+matriz
+
+# Sensibilidad, especificidad y exactitud
+sensibilidad <- matriz["Dead", "Dead"] / sum(matriz["Dead", ])
+especificidad <- matriz["Alive", "Alive"] / sum(matriz["Alive", ])
+exactitud <- sum(diag(matriz)) / sum(matriz)
+
+round(sensibilidad, 3)
+round(especificidad, 3)
+round(exactitud, 3)
+```
+Utilizamos como punto de corte la proporción de pacientes fallecidas en la base (15,31 %). Con este criterio, el modelo identificó correctamente a 399 de las 616 pacientes fallecidas y a 2493 de las 3407 pacientes vivas.
+
+La sensibilidad fue del 64,8 %, la especificidad del 73,2 % y la exactitud del 71,9 %. Esto indica que el modelo logró distinguir parcialmente entre ambos grupos, aunque también clasificó como fallecidas a varias pacientes que en realidad estaban vivas.
+
+Estos resultados corresponden a la misma base utilizada para ajustar el modelo, por lo que deben interpretarse como una evaluación exploratoria y no como una validación predictiva independiente.
+
+```{r}
+# Curva ROC
+roc_obj <- roc(d$estado, probabilidades,
+               levels = c("Alive", "Dead"), direction = "<")
+
+auc(roc_obj)
+
+plot(roc_obj, main = "Curva ROC del modelo final")
+```
+La curva ROC presentó un área bajo la curva (AUC) de 0,754, lo que indica una capacidad de discriminación moderada. Esto significa que el modelo logra distinguir entre pacientes vivas y fallecidas mejor que el azar, aunque todavía presenta errores de clasificación.
+
+De todas formas, estos resultados se obtuvieron utilizando las mismas pacientes con las que se ajustó el modelo, por lo que no representan una validación independiente de su capacidad predictiva.
+
 # Referencias bibliográficas
 1. Organización Mundial de la Salud. Cáncer de mama [Internet]. Ginebra: OMS; 2026 [citado 26 oct 2026]. Disponible en: https://www.who.int/es/news-room/fact-sheets/detail/breast-cancer
 2. Instituto Nacional del Cáncer de EE. UU. Tratamiento del cáncer de seno (PDQ®): versión para profesionales de salud [Internet]. Bethesda: NCI [citado 26 oct 2026]. Disponible en: https://www.cancer.gov/espanol/tipos/seno/pro/tratamiento-seno-pdq
