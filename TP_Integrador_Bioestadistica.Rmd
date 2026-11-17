@@ -173,7 +173,6 @@ Revisamos la frecuencia de cada categoría en todas las variables cualitativas. 
 # Se arma una tabla que resume todas las variables del estudio (el rol cumplen, de qué tipo son y cómo se miden)
 
 variables <- data.frame( 
-           # data.frame() crea una tabla
   
   # nombres de cada variable
   Variable = c("Estado vital", "Receptor de estrógeno", "Edad", "Raza",
@@ -215,16 +214,9 @@ También puede haber **sesgo de información por mala clasificación**, es decir
 
 En cuanto a la variable respuesta, `Status` indica si la paciente falleció pero no la causa, por lo que incluye muertes no relacionadas con el cáncer. Esto pesa más en las pacientes de mayor edad y es una de las razones para ajustar por edad en el modelo multivariado.
 
-Otro problema es la pérdida en el seguimiento. La base no informa la fecha de diagnóstico de cada paciente, pero sí cuántos meses fue seguida, y con eso se puede estimar hasta cuándo se extendió el estudio. El seguimiento termina en una misma fecha de corte para todas, así que las que más meses acumulan son las diagnosticadas al principio. La paciente con el seguimiento más largo tiene 107 meses, y si suponemos que se diagnosticó a comienzos de 2006, el corte del estudio se ubica aproximadamente a fines de 2014.
+Otro aspecto importante es que las pacientes tuvieron distintos tiempos de seguimiento. La base informa los meses de supervivencia, pero no permite identificar con seguridad cuáles pacientes se perdieron durante el estudio.
 
-A partir de ahí, una paciente diagnosticada a fines de 2010 pudo ser seguida como máximo unos 48 meses. Si figura viva con un seguimiento de entre 48 y 107 meses, eso no indica ningún problema, sino que se diagnosticó en distintos momentos y estaba viva al cerrar el estudio. En cambio, una paciente viva con menos de 48 meses no puede explicarse por haberse diagnosticado tarde, sino que dejó de ser seguida antes del corte. Estas son las pérdidas reales en el seguimiento.
-
-```{r seguimiento}
-# Pacientes vivas con menos de 48 meses de seguimiento (pérdidas reales)
-sum(d$estado == "Alive" & d$meses < 48)
-```
-
-Para estas 131 pacientes no sabemos qué pasó después, y algunas podrían haber fallecido sin que quedara registrado. Además, como no todas tuvieron el mismo tiempo de seguimiento, las diagnosticadas antes tuvieron más tiempo para fallecer, algo que la regresión logística no considera porque solo mira si la paciente murió o no. El análisis de supervivencia sí incorpora estas diferencias, ya que trata a las pacientes vivas al final de su seguimiento como observaciones censuradas, algo que la regresión logística no considera porque solo mira si la paciente murió o no. Se señala como una limitación del análisis..
+Esto puede afectar los resultados porque una paciente seguida durante menos tiempo tuvo menos oportunidad de presentar el evento. La regresión logística no considera estas diferencias, mientras que el análisis de Kaplan-Meier permite incorporar los tiempos de seguimiento y las observaciones censuradas.
 
 Por último, al tratarse de un estudio observacional de cohorte puede haber **confusión**. Si las pacientes con receptor de estrógeno negativo difieren en edad, grado o estadio, parte de la mortalidad que se observa en ellas podría deberse a esas características y no al receptor. A diferencia de los sesgos anteriores, esto sí puede abordarse en el análisis, comparando el OR crudo con el OR ajustado de la regresión logística.
 
@@ -242,7 +234,7 @@ pwr.2p.test(h = 0.2, sig.level = 0.05, power = 0.80)
 pwr.2p2n.test(h = 0.2, n1 = 269, n2 = 3754, sig.level = 0.05)
 ```
 
-Con estos parámetros harían falta unas 393 pacientes por grupo. Nuestro grupo de receptor negativo tiene menos (269), pero como el grupo positivo es mucho más grande compensa en parte esa diferencia, y la potencia alcanzada es de alrededor de 89 %. Es decir, si la diferencia real de mortalidad entre ambos grupos fuera al menos de ese tamaño, se tendria casi un 90 % de probabilidad de detectarla, por lo que la muestra resulta suficiente. Este cálculo corresponde a la comparación cruda entre los dos grupos y no al modelo ajustado.
+Con estos parámetros harían falta unas 393 pacientes por grupo. Nuestro grupo de receptor negativo tiene menos (269), pero como el grupo positivo es mucho más grande compensa en parte esa diferencia, y la potencia alcanzada es de alrededor de 89 %. Es decir, si la diferencia real de mortalidad entre ambos grupos fuera al menos de ese tamaño, se tendria casi un 90 % de probabilidad de detectarla, por lo que la muestra resulta suficiente. Este resultado corresponde a la comparación de proporciones entre los dos grupos y no permite asegurar la misma potencia para todos los análisis multivariados.
 
 ## Métodos estadísticos
 
@@ -253,6 +245,8 @@ Después se compara cada variable entre vivas y fallecidas de forma univariada. 
 Para el análisis multivariado se usa un modelo de regresión logística, porque la variable respuesta es dicotómica (viva o fallecida) y permite estimar el efecto del receptor de estrógeno ajustando por las demás variables. Se parte de un modelo saturado, creando variables dummy para las categóricas, y se revisan los supuestos del modelo, especificamente la independencia de las observaciones y la ausencia de multicolinealidad, es decir, que no haya variables explicatorias que aporten la misma información, lo que se evalúa con el factor de inflación de la varianza (VIF). Los resultados se expresan como odds ratios ajustados con su intervalo de confianza del 95%, y la capacidad del modelo para distinguir entre vivas y fallecidas se evalúa con la curva ROC.
 
 Para identificar variables confusoras se compara el odds ratio del receptor de estrógeno con y sin cada variable en el modelo, y se analiza si cambia de manera importante al incluirla. Para evaluar modificación de efecto se agregan términos de interacción entre el receptor de estrógeno y las variables de interés.
+
+Como análisis complementario, se utilizaron curvas de Kaplan-Meier para comparar la supervivencia según el estado del receptor de estrógeno. Las diferencias entre ambas curvas se analizaron mediante el test de log-rank. Este análisis permite considerar los meses de seguimiento y las observaciones censuradas.
 
 Finalmente, en todos los análisis se usa un nivel de significación de 0,05, y se trabaja con el software R.
 
@@ -514,12 +508,18 @@ modelo_int <- glm(estado ~ RE * grado + edad + raza + estado_civil +
                     T_estadio + N_estadio + A_estadio + tamano_tumor + RP +
                     ganglios_exam + ganglios_pos,
                   data = d, family = binomial)
+
 summary(modelo_int)
+
+# Modelo sin interaccion
+modelo_sin_int <- update(modelo_int, . ~ . - RE:grado)
+
+# Comparamos los modelos
+anova(modelo_sin_int, modelo_int, test = "Chisq")
 ```
+Los términos de interacción entre el receptor de estrógeno y el grado tumoral no fueron estadísticamente significativos (p = 0,636 y p = 0,653).
 
-Los términos de interacción entre el receptor de estrógeno negativo y el grado no fueron significativos (p = 0,64 para el grado moderadamente diferenciado y p = 0,65 para el pobre o indiferenciado), por lo que no hay evidencia de que el efecto del receptor de estrógeno sobre la mortalidad cambie según el grado tumoral. Es decir, el grado no actúa como modificador de efecto. Igualmente, estos coeficientes tienen errores estándar mucho mayores que los del resto del modelo, lo que indica estimaciones poco precisas, probablemente por la escasa cantidad de pacientes con receptor negativo en algunas categorías de grado. 
-
-Por lo tanto, no se encontró evidencia de modificación de efecto según el grado tumoral y decidimos no incluir esta interacción en el modelo final.
+También comparamos el modelo con y sin interacción mediante una prueba de chi-cuadrado, que dio un p-valor de 0,8989. Como es mayor a 0,05, no encontramos evidencia suficiente para afirmar que la asociación entre el receptor de estrógeno y la mortalidad cambie según el grado tumoral. Por este motivo, decidimos no incluir la interacción en el modelo final.
 
 
 ### Elección del modelo final
@@ -537,18 +537,21 @@ summary(modelo_final)
 
 # Comparamos los modelos
 AIC(modelo, modelo_final)
+
+# Comparamos si sacar las variables cambia el ajuste
+anova(modelo_final, modelo, test = "Chisq")
 ```
 
-El modelo sin tamaño tumoral ni estadio A presentó un AIC de 2992,19, menor al del modelo anterior (2996,16), por lo que quitar estas variables no empeora el ajuste. Además, el coeficiente del receptor de estrógeno negativo prácticamente no cambia (0,764) y todas las variables que permanecen en el modelo son significativas.
+El modelo sin tamaño tumoral ni estadio A presentó un AIC de 2992,19, menor al del modelo anterior (2996,16). Al comparar ambos modelos mediante una prueba de chi-cuadrado, obtuvimos un p-valor de 0,986, por lo que no encontramos una pérdida significativa de ajuste al eliminar estas variables.
 
-Por este motivo, decidimos conservar el modelo más sencillo, que incluye el receptor de estrógeno, edad, raza, estado civil, estadios T y N, grado tumoral, receptor de progesterona y cantidad de ganglios examinados y positivos.
+Además, el OR del receptor de estrógeno prácticamente no cambió (de 2,145 a 2,147). Por estos motivos, decidimos conservar el modelo más sencillo, que incluye RE, edad, raza, estado civil, estadios T y N, grado tumoral, RP y ganglios examinados y positivos.
 
 ### Odds ratios del modelo final
 
 Una vez elegido el modelo final, calculamos los odds ratios ajustados de las variables incluidas. Estos valores permiten analizar su asociación con la mortalidad, manteniendo constantes las demás variables del modelo.
 
 ```{r odds-modelo-final}
-# OR ajustados con su IC 95 %: exp() pasa los coeficientes a OR y cbind() junta las columnas en una sola tabla
+# OR ajustados e intervalos de confianza
 round(exp(cbind(OR = coef(modelo_final), confint(modelo_final))), 2)
 
 # VIF del modelo final -> confirma que no hay multicolinealidad
@@ -608,6 +611,121 @@ Como punto de corte para clasificar a las pacientes se utilizó la proporción d
 Con este criterio, el modelo identificó correctamente al 64,8 % de las fallecidas (sensibilidad) y al 73,2 % de las vivas (especificidad), con una exactitud global del 71,9 %. El área bajo la curva ROC fue de 0,754, que se ubica entre 0,5 (un modelo que clasifica al azar) y 1 (un modelo perfecto) e indica una capacidad moderada para distinguir entre vivas y fallecidas. Este valor no depende del punto de corte elegido.
 
 Esta capacidad limitada se podria explicar en parte porque la base no incluye información que influye mucho en el pronóstico, como el tratamiento recibido o las comorbilidades, y porque la variable respuesta incluye muertes por cualquier causa. De todas formas, el objetivo del modelo no es predecir qué pacientes van a fallecer, sino estimar la asociación entre el receptor de estrógeno y la mortalidad ajustando por las demás variables, y para eso el modelo resulta adecuado.
+
+## Análisis de supervivencia (complementario)
+
+Como se señaló en la sección de sesgos, la regresión logística no tiene en cuenta que las pacientes fueron seguidas durante tiempos distintos. Para complementarla se estiman curvas de supervivencia de Kaplan-Meier según el receptor de estrógeno, que usan los meses de seguimiento y tratan a las pacientes vivas al final de su seguimiento como observaciones censuradas. Las curvas se comparan con el test de log-rank, cuya hipótesis nula es que la supervivencia es igual en ambos grupos.
+
+```{r kaplan-meier, fig.width=7, fig.height=5}
+# Surv(tiempo, evento) arma la variable de supervivencia: meses de seguimiento y muerte (1 = falleció, 0 = censurada)
+# survfit() estima una curva de Kaplan-Meier para cada grupo de RE
+km <- survfit(Surv(meses, muerte) ~ RE, data = d)
+
+plot(km, col = c("#2a78d6", "#eb6834"), lwd = 2, mark.time = FALSE,
+     ylim = c(0.4, 1), xlab = "Meses desde el diagnóstico",
+     ylab = "Probabilidad de supervivencia",
+     main = "Supervivencia según receptor de estrógeno (Kaplan-Meier)")
+legend("bottomleft", legend = c("RE positivo", "RE negativo"),
+       col = c("#2a78d6", "#eb6834"), lwd = 2, bty = "n")
+
+# Supervivencia estimada a los 3, 5 y 7 años en cada grupo
+summary(km, times = c(36, 60, 84))
+
+# Test de log-rank
+# H0: las curvas de supervivencia son iguales en RE positivo y RE negativo
+survdiff(Surv(meses, muerte) ~ RE, data = d)
+```
+
+Las curvas se separan desde los primeros meses y la distancia entre ellas se mantiene durante todo el seguimiento. A los 5 años (60 meses) seguía viva aproximadamente el 90 % de las pacientes con receptor de estrógeno positivo, frente a alrededor del 63 % de las de receptor negativo. A los 7 años (84 meses), los valores fueron de alrededor del 85 % y el 60 %, respectivamente. El test de log-rank dio un p-valor menor a 0,001, por lo que se rechaza la hipótesis de que la supervivencia sea igual en ambos grupos.
+
+Este resultado coincide con el de la regresión logística, pero esta vez considerando el tiempo que cada paciente fue seguida. Por lo tanto, la mayor mortalidad de las pacientes RE negativas no se explica por diferencias en la duración del seguimiento. Igual que el OR crudo, esta comparación no está ajustada por las demás variables.
+
+## Gráficos de resumen
+
+Para resumir los resultados principales se presentan los siguientes gráficos.
+
+```{r grafico-mortalidad-RE, fig.width=6, fig.height=4.5}
+# Porcentaje de fallecidas en cada grupo de receptor de estrógeno
+mort_RE <- d %>%
+  group_by(RE) %>%
+  summarise(n = n(), fallecidas = sum(muerte), pct = 100 * mean(muerte))
+
+ggplot(mort_RE, aes(x = RE, y = pct)) +
+  geom_col(fill = c("#2a78d6", "#eb6834"), width = 0.55) +
+  geom_text(aes(label = paste0(round(pct, 1), " %\n(", fallecidas, " de ", n, ")")),
+            vjust = -0.3, size = 3.8) +
+  scale_x_discrete(labels = c("Positive" = "RE positivo", "Negative" = "RE negativo")) +
+  scale_y_continuous(limits = c(0, 55)) +
+  labs(title = "Mortalidad según receptor de estrógeno",
+       x = NULL, y = "Fallecidas (%)") +
+  theme_minimal()
+```
+
+El primer gráfico resume la comparación cruda. Falleció el 40,1 % de las pacientes con receptor de estrógeno negativo, frente al 13,5 % de las de receptor positivo, es decir, una proporción unas tres veces mayor.
+
+```{r grafico-cuantitativas, fig.width=8, fig.height=4}
+# Comparamos las variables cuantitativas entre vivas y fallecidas
+
+par(mfrow = c(1, 3))
+
+boxplot(edad ~ estado, data = d,
+        main = "Edad", xlab = "Estado", ylab = "Años")
+
+boxplot(tamano_tumor ~ estado, data = d,
+        main = "Tamaño del tumor", xlab = "Estado", ylab = "mm")
+
+boxplot(ganglios_pos ~ estado, data = d,
+        main = "Ganglios positivos", xlab = "Estado",
+        ylab = "Cantidad")
+
+par(mfrow = c(1, 1)) # volvemos a la disposicion original
+```
+
+Los diagramas de caja muestran lo que encontró el test de Mann-Whitney. Las fallecidas tenían una edad algo mayor, tumores más grandes y más ganglios positivos. En las dos últimas variables también se ve la asimetría positiva, con muchos valores alejados hacia arriba.
+
+```{r grafico-grado-RE, fig.width=7.5, fig.height=4.5}
+# Porcentaje de fallecidas según grado y receptor de estrógeno
+mort_grado <- d %>%
+  group_by(grado, RE) %>%
+  summarise(n = n(), pct = 100 * mean(muerte), .groups = "drop")
+
+ggplot(mort_grado, aes(x = grado, y = pct, fill = RE)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  geom_text(aes(label = paste0("n = ", n)), position = position_dodge(width = 0.8),
+            vjust = -0.4, size = 3.2) +
+  scale_fill_manual(values = c("Positive" = "#2a78d6", "Negative" = "#eb6834"),
+                    labels = c("Positive" = "RE positivo", "Negative" = "RE negativo"),
+                    name = NULL) +
+  scale_y_continuous(limits = c(0, 55)) +
+  labs(title = "Mortalidad según grado tumoral y receptor de estrógeno",
+       x = NULL, y = "Fallecidas (%)") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+Este gráfico muestra dos de los resultados del análisis multivariado. Por un lado, la mortalidad aumenta con el grado tanto en las pacientes RE positivas como en las RE negativas, y las RE negativas se concentran en los tumores pobremente diferenciados (179 de 269). Los tumores RE negativos se presentan con mayor frecuencia en los grados menos diferenciados. Además, al incorporar el grado tumoral al modelo, el OR del receptor de estrógeno disminuye. Esto sugiere que el grado puede contribuir a la confusión observada en la asociación entre RE y mortalidad. Por otro lado, en los tres grados la mortalidad es mayor con RE negativo y la diferencia va siempre en el mismo sentido, lo que coincide con no haber encontrado modificación de efecto. En los tumores bien diferenciados con RE negativo hay solo 8 pacientes, así que ese porcentaje es muy poco preciso.
+
+```{r grafico-confusion, fig.width=7, fig.height=4}
+# OR del RE negativo con distintos ajustes
+
+comparacion <- c(
+  "Crudo" = unname(exp(coef(modelo_crudo)["RENegative"])),
+  "Edad" = unname(exp(coef(modelo_edad)["RENegative"])),
+  "Estadio N" = unname(exp(coef(modelo_N)["RENegative"])),
+  "Grado" = unname(exp(coef(modelo_grado)["RENegative"])),
+  "RP" = unname(exp(coef(modelo_RP)["RENegative"])),
+  "Modelo final" = unname(exp(coef(modelo_final)["RENegative"]))
+) # unname es para que no aparezca siempre RENegative agregado a las barras
+
+barplot(comparacion, las = 2,
+        main = "OR del RE negativo según el ajuste",
+        ylab = "Odds ratio",
+        ylim = c(0, 5))
+
+abline(h = 1, lty = 2)
+```
+
+El gráfico muestra cómo cambia el OR del receptor de estrógeno negativo al ajustar por distintas variables. El mayor cambio se observa al incorporar el receptor de progesterona, seguido del grado tumoral. En cambio, al ajustar por edad, el OR aumenta ligeramente respecto del valor crudo.
 
 # Conclusiones
 
