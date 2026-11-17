@@ -60,9 +60,9 @@ Diagnósticos entre 2006 y 2010, con datos provenientes de la actualización de 
 
 ## Participantes
 
-**Criterios de inclusión** (definidos por el database): mujeres con diagnóstico de carcinoma ductal y lobulillar infiltrante de mama (código histológico 8522/3) entre 2006 y 2010, registradas en SEER.
+**Criterios de inclusión** (definidos por la base de datos): mujeres con diagnóstico de carcinoma ductal y lobulillar infiltrante de mama (código histológico 8522/3) entre 2006 y 2010, registradas en SEER.
 
-**Criterios de exclusión** (de la base de datos): pacientes con tamaño tumoral, ganglios examinados o ganglios positivos desconocidos, registros duplicados, y pacientes con menos de 1 mes de supervivencia. 
+**Criterios de exclusión** (de la base de datos): pacientes con tamaño tumoral, ganglios examinados o ganglios positivos desconocidos, y pacientes con menos de 1 mes de supervivencia. En este trabajo se excluyó además un registro duplicado. 
 
 ## Importación y preparación de los datos
 
@@ -165,7 +165,7 @@ Luego de eliminar el registro duplicado quedaron 4023 pacientes, de las cuales 6
 
 En los modelos, R toma como referencia la primera categoría de cada factor, por eso fijamos el orden de los niveles. Tomamos RE positivo como referencia para que los resultados muestren cómo cambia el riesgo en las pacientes RE negativas. La variable `Grade` no se usa porque contiene la misma información que `differentiate`.
 
-Revisamos la frecuencia de cada categoría en todas las variables cualitativas. En casi todas, la categoría más chica supera las 60 pacientes (la menor es el estadio IIIB, con 67), salvo en dos variables, que se recategorizaron. En el grado de diferenciación, “Undifferentiated” tiene solo 19, así que la unimos con “Poorly differentiated”, que es la más parecida desde lo clínico. El estado civil tenía cinco categorías, entre ellas “Separated” con solo 45 pacientes, por lo que lo resumimos en casada y no casada.
+Se revisó la frecuencia de cada categoría en todas las variables cualitativas. En casi todas, la categoría más chica supera las 60 pacientes (la menor es el estadio IIIB, con 67), salvo en dos variables, que se recategorizaron. En el grado de diferenciación, “Undifferentiated” tiene solo 19, así que la unimos con “Poorly differentiated”, que es la más parecida desde lo clínico. El estado civil tenía cinco categorías, entre ellas “Separated” con solo 45 pacientes, por lo que lo resumimos en casada y no casada.
 
 ## Variables
 
@@ -244,7 +244,9 @@ Después se compara cada variable entre vivas y fallecidas de forma univariada. 
 
 Para el análisis multivariado se usa un modelo de regresión logística, porque la variable respuesta es dicotómica (viva o fallecida) y permite estimar el efecto del receptor de estrógeno ajustando por las demás variables. Se parte de un modelo saturado, creando variables dummy para las categóricas, y se revisan los supuestos del modelo, especificamente la independencia de las observaciones y la ausencia de multicolinealidad, es decir, que no haya variables explicatorias que aporten la misma información, lo que se evalúa con el factor de inflación de la varianza (VIF). Los resultados se expresan como odds ratios ajustados con su intervalo de confianza del 95%, y la capacidad del modelo para distinguir entre vivas y fallecidas se evalúa con la curva ROC.
 
-Para identificar variables confusoras se compara el odds ratio del receptor de estrógeno con y sin cada variable en el modelo, y se analiza si cambia de manera importante al incluirla. Para evaluar modificación de efecto se agregan términos de interacción entre el receptor de estrógeno y las variables de interés.
+Los modelos se comparan con el AIC, que premia el buen ajuste pero penaliza la cantidad de variables, y observando si cambia el OR del receptor de estrógeno. Además, se arma una tabla de clasificación con la sensibilidad, la especificidad y la exactitud, usando como punto de corte la proporción de fallecidas.
+
+Para identificar variables confusoras se compara el odds ratio del receptor de estrógeno al agregar de a una las variables que podían estar relacionadas con el receptor (receptor de progesterona, grado, estadio N y edad), y se analiza si cambia de manera importante al incluirla. Para evaluar modificación de efecto se agregan términos de interacción entre el receptor de estrógeno y el grado tumoral.
 
 Como análisis complementario, se utilizaron curvas de Kaplan-Meier para comparar la supervivencia según el estado del receptor de estrógeno. Las diferencias entre ambas curvas se analizaron mediante el test de log-rank. Este análisis permite considerar los meses de seguimiento y las observaciones censuradas.
 
@@ -343,7 +345,7 @@ round(prop.table(table(d$RP, d$estado), 2) * 100, 1)
 
 Entre las variables cuantitativas, las pacientes fallecidas eran algo mayores que las vivas (mediana de 56,5 años, con un rango intercuartílico de 48 a 63, frente a 54 años, de 47 a 61). También tenían tumores más grandes (30 mm, de 20 a 50, frente a 23 mm, de 15 a 35) y más ganglios positivos (4, de 2 a 10, frente a 2, de 1 a 4). En cambio, la cantidad de ganglios examinados fue igual en ambos grupos (mediana de 14), algo esperable porque depende de la cirugía y no de la gravedad del tumor.
 
-En las variables cualitativas se repite un patrón parecido, con características de peor pronóstico más frecuentes entre las fallecidas. En ellas fueron menos frecuentes los tumores T1 (25,5 % frente a 42,4 %) y más frecuentes los T3 (18,8 % frente a 12,2 %) y T4 (6,5 % frente a 1,8 %), además del compromiso ganglionar N3 (29,4 % frente a 8,5 %), el grado pobre o indiferenciado (44,2 % frente a 25,2 %) y la extensión a distancia (5,7 % frente a 1,7 %). Por otro lado, también fueron más frecuentes entre las fallecidas el compromiso ganglionar N3 (29,4 % frente a 8,5 %), el grado pobre o indiferenciado (44,2 % frente a 25,2 %) y la extensión a distancia (5,7 % frente a 1,7 %). El estadio IIIC muestra exactamente los mismos porcentajes que N3, porque en esta clasificación toda paciente con N3 corresponde a un estadio IIIC, lo que confirma la superposición entre ambas variables. Además, hubo más pacientes de raza negra (11,9 % frente a 6,4 %) y más no casadas (41,9 % frente a 33,0 %) en este grupo.
+En las variables cualitativas se repite un patrón parecido, con características de peor pronóstico más frecuentes entre las fallecidas. En ellas fueron menos frecuentes los tumores T1 (25,5 % frente a 42,4 %) y más frecuentes los T3 (18,8 % frente a 12,2 %) y T4 (6,5 % frente a 1,8 %), además del compromiso ganglionar N3 (29,4 % frente a 8,5 %), el grado pobre o indiferenciado (44,2 % frente a 25,2 %) y la extensión a distancia (5,7 % frente a 1,7 %). El estadio IIIC muestra exactamente los mismos porcentajes que N3, porque en esta clasificación toda paciente con N3 corresponde a un estadio IIIC, lo que confirma la superposición entre ambas variables. Además, hubo más pacientes de raza negra (11,9 % frente a 6,4 %) y más no casadas (41,9 % frente a 33,0 %) en este grupo.
 
 En cuanto a la exposición principal, el 17,5 % de las fallecidas tenía un tumor con receptor de estrógeno negativo, frente al 4,7 % de las vivas, y algo parecido ocurre con el receptor de progesterona negativo (33,1 % frente a 14,5 %). Estas diferencias son solo descriptivas, y en la sección siguiente se evalúa si son estadísticamente significativas.
 
@@ -489,7 +491,7 @@ exp(coef(modelo))["RENegative"]
 table(d$RE, d$RP)
 ```
 
-El OR crudo fue de 4,29. Al ajustar por el receptor de progesterona disminuyó a 2,46, y al ajustar por el grado tumoral bajó a 3,26. Esto indica que ambas variables podrían estar influyendo en la asociación observada entre el receptor de estrógeno y la mortalidad.
+El OR crudo fue de 4,29 (calculado con la regresión logística, prácticamente igual al 4,28 de Fisher). Al ajustar por el receptor de progesterona disminuyó a 2,46, y al ajustar por el grado tumoral bajó a 3,26. Esto indica que ambas variables podrían estar influyendo en la asociación observada entre el receptor de estrógeno y la mortalidad.
 
 Al ajustar por el estadio N, el OR disminuyó a 3,71, mientras que al ajustar por edad aumentó a 4,54. Por lo tanto, el receptor de progesterona y el grado tumoral fueron las variables que más modificaron la estimación del OR en estas comparaciones individuales.
 
@@ -510,16 +512,9 @@ modelo_int <- glm(estado ~ RE * grado + edad + raza + estado_civil +
                   data = d, family = binomial)
 
 summary(modelo_int)
-
-# Modelo sin interaccion
-modelo_sin_int <- update(modelo_int, . ~ . - RE:grado)
-
-# Comparamos los modelos
-anova(modelo_sin_int, modelo_int, test = "Chisq")
 ```
-Los términos de interacción entre el receptor de estrógeno y el grado tumoral no fueron estadísticamente significativos (p = 0,636 y p = 0,653).
 
-También comparamos el modelo con y sin interacción mediante una prueba de chi-cuadrado, que dio un p-valor de 0,8989. Como es mayor a 0,05, no encontramos evidencia suficiente para afirmar que la asociación entre el receptor de estrógeno y la mortalidad cambie según el grado tumoral. Por este motivo, decidimos no incluir la interacción en el modelo final.
+Los términos de interacción entre el receptor de estrógeno y el grado tumoral no fueron estadísticamente significativos (p = 0,636 y p = 0,653), por lo que no hay evidencia de que el efecto del receptor sobre la mortalidad cambie según el grado. Por este motivo, decidimos no incluir la interacción en el modelo final.
 
 
 ### Elección del modelo final
@@ -538,11 +533,9 @@ summary(modelo_final)
 # Comparamos los modelos
 AIC(modelo, modelo_final)
 
-# Comparamos si sacar las variables cambia el ajuste
-anova(modelo_final, modelo, test = "Chisq")
 ```
 
-El modelo sin tamaño tumoral ni estadio A presentó un AIC de 2992,19, menor al del modelo anterior (2996,16). Al comparar ambos modelos mediante una prueba de chi-cuadrado, obtuvimos un p-valor de 0,986, por lo que no encontramos una pérdida significativa de ajuste al eliminar estas variables.
+El modelo sin tamaño tumoral ni estadio A presentó un AIC de 2992,19, menor al del modelo anterior (2996,16), por lo que quitar estas variables no empeora el ajuste.
 
 Además, el OR del receptor de estrógeno prácticamente no cambió (de 2,145 a 2,147). Por estos motivos, decidimos conservar el modelo más sencillo, que incluye RE, edad, raza, estado civil, estadios T y N, grado tumoral, RP y ganglios examinados y positivos.
 
@@ -564,7 +557,7 @@ exp(coef(modelo_final))["RENegative"]
 
 En el modelo final, el receptor de estrógeno negativo presentó un OR ajustado de 2,15 (IC 95 %: 1,52–3,04). Esto indica que las pacientes con RE negativo tuvieron mayores chances de fallecimiento que aquellas con RE positivo, incluso después de ajustar por las demás variables del modelo. Como el intervalo de confianza no incluye el 1, la asociación es estadísticamente significativa.
 
-Al comparar este resultado con el OR crudo de 4,29, vemos que la asociación disminuye aproximadamente a la mitad al incorporar otras características de las pacientes y del tumor, en línea con lo observado en el análisis de confusión.
+Al comparar este resultado con el OR crudo de 4,28, vemos que la asociación disminuye aproximadamente a la mitad al incorporar otras características de las pacientes y del tumor, en línea con lo observado en el análisis de confusión.
 
 En cuanto a las características del tumor, las chances de fallecer aumentaron con el estadio T (OR de 1,51 para T2, 1,74 para T3 y 3,02 para T4, frente a T1) y con el estadio N (1,53 para N2 y 1,79 para N3, frente a N1). Lo mismo ocurrió con el grado, con un OR de 1,68 para los tumores moderadamente diferenciados y de 2,51 para los pobremente diferenciados o indiferenciados, frente a los bien diferenciados. El receptor de progesterona negativo también se asoció con mayores chances de fallecer (OR 1,79; IC 95 %: 1,39–2,29). Cada ganglio positivo adicional aumentó las chances en un 8 % (OR 1,08), mientras que cada ganglio examinado adicional las redujo en un 4 % (OR 0,96).
 
@@ -731,7 +724,7 @@ El gráfico muestra cómo cambia el OR del receptor de estrógeno negativo al aj
 
 El objetivo de este trabajo fue evaluar si el estado del receptor de estrógeno se asocia con la mortalidad en mujeres con cáncer de mama, ajustando por características demográficas y del tumor. De las 4023 pacientes analizadas, 616 (15,3 %) fallecieron durante el seguimiento.
 
-En el análisis univariado, las pacientes fallecidas presentaron con mayor frecuencia características de peor pronóstico, como estadios T y N más avanzados, tumores menos diferenciados y receptores hormonales negativos, además de mayor edad, tumores más grandes y más ganglios positivos. El receptor de estrógeno negativo se asoció con un odds de fallecer 4,29 veces mayor que el receptor positivo (IC 95 %: 3,27–5,60).
+En el análisis univariado, las pacientes fallecidas presentaron con mayor frecuencia características de peor pronóstico, como estadios T y N más avanzados, tumores menos diferenciados y receptores hormonales negativos, además de mayor edad, tumores más grandes y más ganglios positivos. El receptor de estrógeno negativo se asoció con un odds de fallecer 4,28 veces mayor que el receptor positivo (IC 95 %: 3,27–5,60).
 
 Al ajustar por las demás variables en la regresión logística, el OR del receptor de estrógeno negativo bajó a 2,15 (IC 95 %: 1,52–3,04), aproximadamente la mitad del valor crudo, pero siguió siendo significativo. Gran parte de esa disminución se explicó por el receptor de progesterona y el grado tumoral, que actuaron como confusoras. En particular, el receptor de progesterona está muy ligado al de estrógeno, ya que el 90 % de las pacientes RE negativas eran también RP negativas. No encontramos evidencia de que el grado modifique el efecto del receptor de estrógeno. El modelo final mostró una capacidad moderada para distinguir entre vivas y fallecidas, con un área bajo la curva ROC de 0,754.
 
