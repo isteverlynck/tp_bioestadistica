@@ -1608,8 +1608,9 @@ preparación de los datos</h2>
 library(tidyverse)
 library(pwr) # tamaño de muestra y potencia
 library(car)
-library(pROC)       # curva ROC
-library(survival)   # análisis de supervivencia</code></pre>
+library(pROC) # curva ROC
+library(survival) # análisis de supervivencia
+library(ResourceSelection) # test de Hosmer-Lemeshow</code></pre>
 <pre class="r"><code># Se importa el csv. Tiene que estar en la misma carpeta que este archivo.
 datos &lt;- read.csv(&quot;Breast_Cancer.csv&quot;, check.names = FALSE)
 names(datos) &lt;- trimws(names(datos))  # algunas columnas tienen espacios al final
@@ -2121,12 +2122,14 @@ curva ROC.</p>
 penaliza la cantidad de variables, y observando si cambia el OR del
 receptor de estrógeno. Además, se arma una tabla de clasificación con la
 sensibilidad, la especificidad y la exactitud, usando como punto de
-corte la proporción de fallecidas.</p>
+corte la proporción de fallecidas. La bondad de ajuste del modelo final
+se evalúa con el test de Hosmer-Lemeshow.</p>
 <p>Para identificar variables confusoras se compara el odds ratio del
 receptor de estrógeno al agregar de a una las variables que podían estar
 relacionadas con el receptor (receptor de progesterona, grado, estadio N
 y edad), y se analiza si el OR cambia de manera importante al incluir
-cada una.</p>
+cada una. Para evaluar modificación de efecto se agregan términos de
+interacción entre el receptor de estrógeno y el grado tumoral.</p>
 <p>Como análisis complementario, se utilizaron curvas de Kaplan-Meier
 para comparar la supervivencia según el estado del receptor de
 estrógeno. Las diferencias entre ambas curvas se analizaron mediante el
@@ -3066,6 +3069,21 @@ modelo</h3>
 modelo distingue entre las pacientes que fallecieron y las que seguían
 vivas al final del seguimiento. Para esto, utilizamos las probabilidades
 estimadas por la regresión logística.</p>
+<pre class="r"><code># Test de Hosmer-Lemeshow: compara fallecidas observadas y esperadas en 10 grupos
+# H0: el modelo ajusta bien
+hoslem.test(d$muerte, fitted(modelo_final), g = 10)</code></pre>
+<pre><code>## 
+##  Hosmer and Lemeshow goodness of fit (GOF) test
+## 
+## data:  d$muerte, fitted(modelo_final)
+## X-squared = 10.199, df = 8, p-value = 0.2513</code></pre>
+<p>Para evaluar la bondad de ajuste del modelo final se aplicó el test
+de Hosmer-Lemeshow, que divide a las pacientes en diez grupos según la
+probabilidad de fallecer estimada por el modelo y compara, en cada
+grupo, las fallecidas observadas con las esperadas. La hipótesis nula es
+que el modelo ajusta bien. El p-valor fue de 0,25, mayor a 0,05, por lo
+que no se rechaza la hipótesis nula y no hay diferencias significativas
+entre lo que predice el modelo y lo que se observó.</p>
 <pre class="r"><code># Probabilidades estimadas por el modelo
 probabilidades &lt;- predict(modelo_final, type = &quot;response&quot;)
 
@@ -3359,6 +3377,9 @@ Bache SM, Müller K, Ooms J, Robinson D, Seidel DP, Spinu V, Takahashi K,
 Vaughan D, Wilke C, Woo K, Yutani H (2019). “Welcome to the tidyverse.”
 <em>Journal of Open Source Software</em>, <em>4</em>(43), 1686. <a href="doi:10.21105/joss.01686" class="uri">doi:10.21105/joss.01686</a>
 <a href="https://doi.org/10.21105/joss.01686" class="uri">https://doi.org/10.21105/joss.01686</a>.</li>
+<li>Lele SR, Keim JL, Solymos P (2023). <em>ResourceSelection: Resource
+Selection (Probability) Functions for Use-Availability Data</em>. <a href="doi:10.32614/CRAN.package.ResourceSelection" class="uri">doi:10.32614/CRAN.package.ResourceSelection</a> <a href="https://doi.org/10.32614/CRAN.package.ResourceSelection" class="uri">https://doi.org/10.32614/CRAN.package.ResourceSelection</a>.
+R package version 0.3-6, <a href="https://CRAN.R-project.org/package=ResourceSelection" class="uri">https://CRAN.R-project.org/package=ResourceSelection</a>.</li>
 </ol>
 </div>
 

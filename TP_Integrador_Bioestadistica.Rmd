@@ -72,8 +72,9 @@ Diagnósticos entre 2006 y 2010, con datos provenientes de la actualización de 
 library(tidyverse)
 library(pwr) # tamaño de muestra y potencia
 library(car)
-library(pROC)       # curva ROC
-library(survival)   # análisis de supervivencia
+library(pROC) # curva ROC
+library(survival) # análisis de supervivencia
+library(ResourceSelection) # test de Hosmer-Lemeshow
 ```
 
 
@@ -245,9 +246,10 @@ Después se compara cada variable entre vivas y fallecidas de forma univariada. 
 
 Para el análisis multivariado se usa un modelo de regresión logística, porque la variable respuesta es dicotómica (viva o fallecida) y permite estimar el efecto del receptor de estrógeno ajustando por las demás variables. Se parte de un modelo saturado, creando variables dummy para las categóricas, y se revisan los supuestos del modelo, especificamente la independencia de las observaciones y la ausencia de multicolinealidad, es decir, que no haya variables explicatorias que aporten la misma información, lo que se evalúa con el factor de inflación de la varianza (VIF). Los resultados se expresan como odds ratios ajustados con su intervalo de confianza del 95%, y la capacidad del modelo para distinguir entre vivas y fallecidas se evalúa con la curva ROC.
 
-Los modelos se comparan con el AIC, que premia el buen ajuste pero penaliza la cantidad de variables, y observando si cambia el OR del receptor de estrógeno. Además, se arma una tabla de clasificación con la sensibilidad, la especificidad y la exactitud, usando como punto de corte la proporción de fallecidas.
+Los modelos se comparan con el AIC, que premia el buen ajuste pero penaliza la cantidad de variables, y observando si cambia el OR del receptor de estrógeno. Además, se arma una tabla de clasificación con la sensibilidad, la especificidad y la exactitud, usando como punto de corte la proporción de fallecidas. La bondad de ajuste del modelo final se evalúa con el test de Hosmer-Lemeshow.
 
 Para identificar variables confusoras se compara el odds ratio del receptor de estrógeno al agregar de a una las variables que podían estar relacionadas con el receptor (receptor de progesterona, grado, estadio N y edad), y se analiza si el OR cambia de manera importante al incluir cada una.
+Para evaluar modificación de efecto se agregan términos de interacción entre el receptor de estrógeno y el grado tumoral.
 
 Como análisis complementario, se utilizaron curvas de Kaplan-Meier para comparar la supervivencia según el estado del receptor de estrógeno. Las diferencias entre ambas curvas se analizaron mediante el test de log-rank. Este análisis permite considerar los meses de seguimiento y las observaciones censuradas.
 
@@ -570,6 +572,14 @@ Al revisar la multicolinealidad del modelo final, todos los GVIF fueron menores 
 
 Además de interpretar los odds ratios, analizamos qué tan bien el modelo distingue entre las pacientes que fallecieron y las que seguían vivas al final del seguimiento. Para esto, utilizamos las probabilidades estimadas por la regresión logística.
 
+```{r hosmer-lemeshow}                                     
+# Test de Hosmer-Lemeshow: compara fallecidas observadas y esperadas en 10 grupos
+# H0: el modelo ajusta bien
+hoslem.test(d$muerte, fitted(modelo_final), g = 10)
+```
+
+Para evaluar la bondad de ajuste del modelo final se aplicó el test de Hosmer-Lemeshow, que divide a las pacientes en diez grupos según la probabilidad de fallecer estimada por el modelo y compara, en cada grupo, las fallecidas observadas con las esperadas. La hipótesis nula es que el modelo ajusta bien. El p-valor fue de 0,25, mayor a 0,05, por lo que no se rechaza la hipótesis nula y no hay diferencias significativas entre lo que predice el modelo y lo que se observó.
+
 ```{r evaluacion-final}
 # Probabilidades estimadas por el modelo
 probabilidades <- predict(modelo_final, type = "response")
@@ -748,3 +758,4 @@ En conclusión, en esta población el receptor de estrógeno negativo se asocia 
 10. Therneau T (2026). _A Package for Survival Analysis in R_. R package version 3.8-6, <https://CRAN.R-project.org/package=survival>.
 11. Terry M. Therneau, Patricia M. Grambsch (2000). _Modeling Survival Data: Extending the Cox Model_. Springer, New York. ISBN 0-387-98784-3.
 12. Wickham H, Averick M, Bryan J, Chang W, McGowan LD, François R, Grolemund G, Hayes A, Henry L, Hester J, Kuhn M, Pedersen TL, Miller E, Bache SM, Müller K, Ooms J, Robinson D, Seidel DP, Spinu V, Takahashi K, Vaughan D, Wilke C, Woo K, Yutani H (2019). “Welcome to the tidyverse.” _Journal of Open Source Software_, *4*(43), 1686. doi:10.21105/joss.01686 <https://doi.org/10.21105/joss.01686>.
+13. Lele SR, Keim JL, Solymos P (2023). _ResourceSelection: Resource Selection (Probability) Functions for Use-Availability Data_. doi:10.32614/CRAN.package.ResourceSelection <https://doi.org/10.32614/CRAN.package.ResourceSelection>. R package version 0.3-6, <https://CRAN.R-project.org/package=ResourceSelection>.
