@@ -247,7 +247,7 @@ Para el análisis multivariado se usa un modelo de regresión logística, porque
 
 Los modelos se comparan con el AIC, que premia el buen ajuste pero penaliza la cantidad de variables, y observando si cambia el OR del receptor de estrógeno. Además, se arma una tabla de clasificación con la sensibilidad, la especificidad y la exactitud, usando como punto de corte la proporción de fallecidas.
 
-Para identificar variables confusoras se compara el odds ratio del receptor de estrógeno al agregar de a una las variables que podían estar relacionadas con el receptor (receptor de progesterona, grado, estadio N y edad), y se analiza si cambia de manera importante al incluirla. Para evaluar modificación de efecto se agregan términos de interacción entre el receptor de estrógeno y el grado tumoral.
+Para identificar variables confusoras se compara el odds ratio del receptor de estrógeno al agregar de a una las variables que podían estar relacionadas con el receptor (receptor de progesterona, grado, estadio N y edad), y se analiza si el OR cambia de manera importante al incluir cada una.
 
 Como análisis complementario, se utilizaron curvas de Kaplan-Meier para comparar la supervivencia según el estado del receptor de estrógeno. Las diferencias entre ambas curvas se analizaron mediante el test de log-rank. Este análisis permite considerar los meses de seguimiento y las observaciones censuradas.
 
