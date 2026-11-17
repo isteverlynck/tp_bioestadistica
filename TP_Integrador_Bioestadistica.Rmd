@@ -38,6 +38,7 @@ Se utilizó la base *Breast Cancer Prediction* publicada en Kaggle (4), que repr
 2. Comparar las características de las pacientes fallecidas y las vivas al final del seguimiento.
 3. Estimar el odds ratio de muerte asociado a un receptor de estrógeno negativo, crudo y ajustado mediante regresión logística.
 4. Identificar posibles variables confusoras y modificadoras de efecto.
+5. Comparar la supervivencia según el estado del receptor de estrógeno teniendo en cuenta el tiempo de seguimiento
 
 ## Pregunta de investigación (PECO)
 
@@ -696,7 +697,7 @@ ggplot(mort_grado, aes(x = grado, y = pct, fill = RE)) +
   theme(legend.position = "top")
 ```
 
-Este gráfico muestra dos de los resultados del análisis multivariado. Por un lado, la mortalidad aumenta con el grado tanto en las pacientes RE positivas como en las RE negativas, y las RE negativas se concentran en los tumores pobremente diferenciados (179 de 269). Los tumores RE negativos se presentan con mayor frecuencia en los grados menos diferenciados. Además, al incorporar el grado tumoral al modelo, el OR del receptor de estrógeno disminuye. Esto sugiere que el grado puede contribuir a la confusión observada en la asociación entre RE y mortalidad. Por otro lado, en los tres grados la mortalidad es mayor con RE negativo y la diferencia va siempre en el mismo sentido, lo que coincide con no haber encontrado modificación de efecto. En los tumores bien diferenciados con RE negativo hay solo 8 pacientes, así que ese porcentaje es muy poco preciso.
+El gráfico muestra que la mortalidad aumenta con el grado tanto en las pacientes RE positivas como en las RE negativas, y que los tumores RE negativos se concentran en los grados menos diferenciados (179 de las 269 pacientes RE negativas tienen un tumor pobre o indiferenciado). Esto ayuda a entender por qué el OR del receptor baja al ajustar por grado. Además, en los tres grados la mortalidad es mayor con RE negativo y la diferencia va siempre en el mismo sentido, lo que coincide con no haber encontrado modificación de efecto. En los tumores bien diferenciados con RE negativo hay solo 8 pacientes, así que ese porcentaje es poco preciso.
 
 ```{r grafico-confusion, fig.width=7, fig.height=4}
 # OR del RE negativo con distintos ajustes
@@ -728,7 +729,9 @@ En el análisis univariado, las pacientes fallecidas presentaron con mayor frecu
 
 Al ajustar por las demás variables en la regresión logística, el OR del receptor de estrógeno negativo bajó a 2,15 (IC 95 %: 1,52–3,04), aproximadamente la mitad del valor crudo, pero siguió siendo significativo. Gran parte de esa disminución se explicó por el receptor de progesterona y el grado tumoral, que actuaron como confusoras. En particular, el receptor de progesterona está muy ligado al de estrógeno, ya que el 90 % de las pacientes RE negativas eran también RP negativas. No encontramos evidencia de que el grado modifique el efecto del receptor de estrógeno. El modelo final mostró una capacidad moderada para distinguir entre vivas y fallecidas, con un área bajo la curva ROC de 0,754.
 
-Estos resultados deben interpretarse teniendo en cuenta las limitaciones del estudio. La muestra incluye solo pacientes con ganglios comprometidos y estadios II y III, la variable respuesta incluye muertes por cualquier causa, la base no informa el tratamiento recibido y algunas pacientes se perdieron en el seguimiento.
+Las curvas de Kaplan-Meier, que tienen en cuenta el tiempo de seguimiento, mostraron una supervivencia menor en las pacientes RE negativas (alrededor del 63 % a los 5 años, frente al 90 % en las RE positivas; log-rank p < 0,001).
+
+Estos resultados deben interpretarse teniendo en cuenta las limitaciones del estudio. La muestra incluye solo pacientes con ganglios comprometidos y estadios II y III, la variable respuesta incluye muertes por cualquier causa, la base no informa el tratamiento recibido y no todas las pacientes tuvieron el mismo tiempo de seguimiento.
 
 En conclusión, en esta población el receptor de estrógeno negativo se asocia con mayores chances de fallecer, independientemente de la edad, el estadio, el grado y las demás características incluidas en el modelo.
 
@@ -738,5 +741,10 @@ En conclusión, en esta población el receptor de estrógeno negativo se asocia 
 3. Teng J. SEER Breast Cancer Data. IEEE DataPort; 2019. doi:10.21227/a9qy-ph35.
 4. Patel M. Breast Cancer Prediction [dataset]. Kaggle. https://www.kaggle.com/datasets/marshalpatel3558/breast-cancer-prediction
 5. National Cancer Institute. Surveillance, Epidemiology, and End Results (SEER) Program. https://seer.cancer.gov
-
-
+6. R Core Team (2026). _R: A Language and Environment for Statistical Computing_. R Foundation for Statistical Computing, Vienna, Austria. doi:10.32614/R.manuals <https://doi.org/10.32614/R.manuals>. <https://www.R-project.org/>.
+7. Champely S (2020). _pwr: Basic Functions for Power Analysis_. doi:10.32614/CRAN.package.pwr <https://doi.org/10.32614/CRAN.package.pwr>. R package version 1.3-0, <https://CRAN.R-project.org/package=pwr>.
+8. Fox J, Weisberg S (2019). _An R Companion to Applied Regression_, Third edition. Sage, Thousand Oaks CA. <https://www.john-fox.ca/Companion/>.
+9. Xavier Robin, Natacha Turck, Alexandre Hainard, Natalia Tiberti, Frédérique Lisacek, Jean-Charles Sanchez and Markus Müller (2011). pROC: an open-source package for R and S+ to analyze and compare ROC curves. BMC Bioinformatics, 12, p. 77.  DOI: 10.1186/1471-2105-12-77 <http://www.biomedcentral.com/1471-2105/12/77/>
+10. Therneau T (2026). _A Package for Survival Analysis in R_. R package version 3.8-6, <https://CRAN.R-project.org/package=survival>.
+11. Terry M. Therneau, Patricia M. Grambsch (2000). _Modeling Survival Data: Extending the Cox Model_. Springer, New York. ISBN 0-387-98784-3.
+12. Wickham H, Averick M, Bryan J, Chang W, McGowan LD, François R, Grolemund G, Hayes A, Henry L, Hester J, Kuhn M, Pedersen TL, Miller E, Bache SM, Müller K, Ooms J, Robinson D, Seidel DP, Spinu V, Takahashi K, Vaughan D, Wilke C, Woo K, Yutani H (2019). “Welcome to the tidyverse.” _Journal of Open Source Software_, *4*(43), 1686. doi:10.21105/joss.01686 <https://doi.org/10.21105/joss.01686>.
